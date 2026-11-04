@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 
 API = "https://api.hunter.io/v2"
 MOCK_PATH = ROOT / "fixtures" / "hunter_mock.json"
+HUNTER_STORE = ROOT / ".cache" / "hunter"   # git-ignored copy of every paid response
 VERIFICATION_RANK = {"valid": 3, "accept_all": 2, "unknown": 1, None: 1}
 UNUSABLE_VERIFICATION = {"invalid", "disposable"}
 
@@ -150,6 +151,18 @@ def _flag(cid: int, reason: str) -> str:
     return "flagged"
 
 
+def stored_live_response(cid: int, domain: str) -> dict | None:
+    """A live Hunter response we already paid for: from Neon, else from the on-disk copy."""
+    with db.connect() as conn:
+        row = conn.execute(
+            "SELECT hunter_raw FROM contacts WHERE company_id=%s AND NOT is_mock ORDER BY id DESC LIMIT 1",
+            (cid,)).fetchone()
+    if row:
+        return row["hunter_raw"]
+    path = HUNTER_STORE / f"{domain}.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
 def find_poc(company: dict, run_id: int | None = None) -> str:
     """Pick and store a contact for a qualified company. Returns the company's resulting status."""
     icp, settings = get_icp(), get_settings()
@@ -157,12 +170,9 @@ def find_poc(company: dict, run_id: int | None = None) -> str:
     cid, domain = company["id"], company["domain"]
     current_company_id.set(cid)
 
-    with db.connect() as conn:
-        stored = conn.execute(
-            "SELECT hunter_raw FROM contacts WHERE company_id=%s AND NOT is_mock ORDER BY id DESC LIMIT 1",
-            (cid,)).fetchone()
+    stored = stored_live_response(cid, domain)
     if stored:
-        raw, err, reused = stored["hunter_raw"], None, True
+        raw, err, reused = stored, None, True
         log.info("  reusing stored live Hunter response for %s (no credit spent)", domain)
     else:
         reused = False
@@ -170,6 +180,10 @@ def find_poc(company: dict, run_id: int | None = None) -> str:
         if live and (remaining is None or remaining < 1):
             return _flag(cid, f"Hunter not called: {remaining if remaining is not None else 'unknown'} searches left")
         raw, err = domain_search(domain, company["name"], live)
+        if live and raw and not err:
+            # Persist before anything else can fail: a paid response must never be lost.
+            HUNTER_STORE.mkdir(parents=True, exist_ok=True)
+            (HUNTER_STORE / f"{domain}.json").write_text(json.dumps(raw), encoding="utf-8")
         log_usage("hunter", stage="poc", model="live" if live else "mock", ok=err is None, error=err,
                   credits_used=1 if live and err is None else 0, cached=not live,
                   credits_remaining=(remaining - 1) if (live and remaining is not None and err is None) else remaining)
@@ -186,7 +200,7 @@ def find_poc(company: dict, run_id: int | None = None) -> str:
     e = pick.email
     src = next((s.get("uri") for s in e.get("sources") or [] if s.get("uri")), None)
     with db.connect() as conn:
-        conn.execute("DELETE FROM contacts WHERE company_id=%s", (cid,))   # raw response is kept in the new row
+        # Contacts are append-only: earlier rows stay valid for emails that reference them; latest row wins.
         conn.execute(
             """INSERT INTO contacts (company_id, run_id, full_name, first_name, title, email, confidence,
                                      verification_status, seniority, department, pick_rule, pick_reason,
