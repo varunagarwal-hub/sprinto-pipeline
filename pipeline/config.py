@@ -29,6 +29,7 @@ class Settings:
     database_url: str
     my_email: str
     env: str  # "dev" or "prod"
+    hunter_mode: str  # "mock" (default) or "live": live Hunter calls spend real credits
 
     @property
     def is_dev(self) -> bool:
@@ -57,6 +58,8 @@ class ICP:
     poc_rules: dict[str, list[str]]
     poc_title_aliases: dict[str, list[str]]
     hunter_min_confidence: int
+    hunter_monthly_searches: int
+    hunter_search_params: dict[str, str]
     batch_size: int
     target_qualified_per_run: int
     max_batches_per_run: int
@@ -96,6 +99,7 @@ def get_settings() -> Settings:
         database_url=os.getenv("DATABASE_URL", ""),
         my_email=os.getenv("MY_EMAIL", ""),
         env=(os.getenv("PIPELINE_ENV") or "dev").lower(),
+        hunter_mode=(os.getenv("HUNTER_MODE") or "mock").lower(),
     )
 
 

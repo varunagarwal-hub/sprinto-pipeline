@@ -7,6 +7,7 @@
     python main.py --domains domains.txt   inject manual domains (domain[,name[,Series X]]) at top rank
     python main.py run                     batches of 20 until 5 qualified (icp.json), max 3 batches
     python main.py extract <domain>        crawl + extract one domain, print evidence JSON
+    python main.py poc                     find a PoC for qualified companies without one (HUNTER_MODE)
 """
 from __future__ import annotations
 
@@ -101,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     for noisy in ("httpx", "urllib3", "google_genai"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     parser = argparse.ArgumentParser(description="Sprinto cold outreach pipeline")
-    parser.add_argument("command", nargs="?", choices=["migrate", "check", "stage1", "pool", "extract", "run"])
+    parser.add_argument("command", nargs="?", choices=["migrate", "check", "stage1", "pool", "extract", "run", "poc"])
     parser.add_argument("target", nargs="?", help="domain for the extract command")
     parser.add_argument("--domains", help="file of manual domains to inject into the pool")
     parser.add_argument("--name", help="company name for the extract command")
@@ -121,6 +122,16 @@ def main(argv: list[str] | None = None) -> int:
         if not args.target:
             parser.error("extract needs a domain, e.g. python main.py extract findem.ai --name Findem")
         return cmd_extract(args.target, args.name)
+    if args.command == "poc":
+        from pipeline.config import get_settings
+        from pipeline.poc import credits_remaining, run_pending
+
+        live = get_settings().hunter_mode == "live"
+        print(f"Hunter mode: {'LIVE (spends credits)' if live else 'mock (no credits spent)'}; "
+              f"searches left: {credits_remaining(live)}")
+        for r in run_pending():
+            print(f"  {r['company']:<20} {r['status']}")
+        return 0
     if args.command == "pool":
         print_pool()
         return 0

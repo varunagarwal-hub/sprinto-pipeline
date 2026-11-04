@@ -13,6 +13,7 @@ from psycopg.types.json import Jsonb
 from pipeline import db
 from pipeline.config import get_icp, icp_raw
 from pipeline.extract import extract
+from pipeline.poc import find_poc
 from pipeline.qualify import Outcome, gate_rows, qualify_company
 from pipeline.resolve import resolve
 from pipeline.scraper import Page, Scraper
@@ -106,6 +107,11 @@ def research_company(c: dict, run_id: int) -> str:
     current_stage.set("qualify")
     evidence, out = qualify_company(c, scraper, evidence, record)
     _persist_outcome(cid, run_id, evidence, out, scraper)
+
+    # 6e. PoC (qualified only; counts toward the run target even if no contact is found)
+    if out.status == "qualified":
+        current_stage.set("poc")
+        find_poc({**c, "domain": domain, "status": "qualified"}, run_id)
     return out.status
 
 
@@ -176,7 +182,7 @@ def run(target: int | None = None, max_batches: int | None = None) -> dict[str, 
                     conn.execute(
                         """UPDATE runs SET batches_used=%s, researched=%s, qualified=%s, flagged=%s, dropped=%s
                            WHERE id=%s""",
-                        (batches, researched, counts.get("qualified", 0), counts.get("flagged", 0),
+                        (batches, researched, qualified, counts.get("flagged", 0),
                          counts.get("dropped", 0), run_id))
                 if qualified >= target:
                     stop_reason = "target_reached"
