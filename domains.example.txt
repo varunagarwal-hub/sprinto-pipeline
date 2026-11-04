@@ -1,0 +1,6 @@
+# Manual domains for: python main.py --domains domains.txt
+# Format: domain[,company name[,Series A|Series B|Series C]]
+# Without a stage, Stage 2 flags the company for review (funding stage unknown).
+#
+# acme.io,Acme,Series A
+# example.com

@@ -40,6 +40,7 @@ class ICP:
     funding_stages: list[str]
     funding_max_age_months: int
     news_queries: list[str]
+    news_when: str
     news_regions: list[dict[str, str]]
     saas_keywords: list[str]
     exclude_keywords: list[str]

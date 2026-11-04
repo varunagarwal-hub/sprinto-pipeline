@@ -3,15 +3,20 @@
   "funding_max_age_months": 24,
 
   "news_queries": [
-    "\"raises\" \"Series A\" SaaS",
-    "\"raises\" \"Series B\" SaaS",
-    "\"Series C\" funding SaaS",
-    "\"Series A\" funding B2B software",
-    "\"Series B\" funding fintech",
-    "\"Series A\" funding healthtech",
-    "startup secures Series A platform",
-    "startup bags Series B funding"
+    "\"Series A\" SaaS funding",
+    "\"Series B\" SaaS funding",
+    "\"Series C\" SaaS funding",
+    "\"Series A\" fintech raises",
+    "\"Series B\" fintech raises",
+    "\"Series A\" healthtech raises",
+    "\"Series A\" B2B software startup",
+    "\"Series B\" B2B platform startup",
+    "\"Series A\" HR tech startup",
+    "\"Series B\" data infrastructure startup",
+    "\"Series A\" startup bags",
+    "\"Series B\" secures funding enterprise software"
   ],
+  "news_when": "2y",
   "news_regions": [
     {"name": "india", "hl": "en-IN", "gl": "IN", "ceid": "IN:en"},
     {"name": "global", "hl": "en-US", "gl": "US", "ceid": "US:en"}
