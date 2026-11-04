@@ -71,8 +71,8 @@
   "competitor_trust_vendors": ["Vanta", "Drata"],
 
   "poc_rules": {
-    "Series A": ["CTO", "VP Engineering", "Co-founder"],
-    "Series B": ["CTO", "VP Engineering", "Co-founder"],
+    "Series A": ["CTO", "VP Engineering", "Co-founder", "Head of Compliance", "CEO"],
+    "Series B": ["CTO", "VP Engineering", "Co-founder", "Head of Compliance", "CEO"],
     "Series C": ["CISO", "Head of Security", "Head of Compliance", "CTO"]
   },
   "poc_title_aliases": {
@@ -81,7 +81,8 @@
     "Co-founder": ["co-founder", "cofounder", "founder"],
     "CISO": ["ciso", "chief information security officer"],
     "Head of Security": ["head of security", "director of security", "vp security", "head of information security"],
-    "Head of Compliance": ["head of compliance", "compliance lead", "director of compliance", "head of grc"]
+    "Head of Compliance": ["head of compliance", "compliance lead", "director of compliance", "head of grc", "compliance manager"],
+    "CEO": ["ceo", "chief executive officer"]
   },
   "hunter_min_confidence": 70,
   "hunter_monthly_searches": 50,
