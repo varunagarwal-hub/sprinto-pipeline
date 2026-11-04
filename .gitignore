@@ -1,0 +1,16 @@
+# Secrets — never commit
+.env
+credentials.json
+token.json
+
+# Local caches (HTTP pages, Gemini responses)
+.cache/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Streamlit
+.streamlit/secrets.toml

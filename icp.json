@@ -1,0 +1,126 @@
+{
+  "funding_stages": ["Series A", "Series B", "Series C"],
+  "funding_max_age_months": 24,
+
+  "news_queries": [
+    "\"raises\" \"Series A\" SaaS",
+    "\"raises\" \"Series B\" SaaS",
+    "\"Series C\" funding SaaS",
+    "\"Series A\" funding B2B software",
+    "\"Series B\" funding fintech",
+    "\"Series A\" funding healthtech",
+    "startup secures Series A platform",
+    "startup bags Series B funding"
+  ],
+  "news_regions": [
+    {"name": "india", "hl": "en-IN", "gl": "IN", "ceid": "IN:en"},
+    {"name": "global", "hl": "en-US", "gl": "US", "ceid": "US:en"}
+  ],
+
+  "saas_keywords": ["saas", "software", "platform", "cloud", "api", "b2b", "subscription", "ai-powered", "automation", "dashboard"],
+  "exclude_keywords": ["hardware", "agency", "consultancy", "consulting", "services firm", "it services", "d2c", "restaurant", "real estate", "ev maker", "electric vehicle", "drone", "semiconductor", "manufacturing", "apparel", "brewery"],
+
+  "industry_weights": {
+    "fintech": 1.0,
+    "payments": 1.0,
+    "healthtech": 1.0,
+    "insurtech": 0.9,
+    "hr tech": 0.8,
+    "data infrastructure": 0.8,
+    "devtools": 0.7,
+    "cybersecurity": 0.6,
+    "martech": 0.5,
+    "edtech": 0.5,
+    "default": 0.3
+  },
+  "industry_aliases": {
+    "fintech": ["fintech", "lending", "neobank", "banking", "wealthtech", "credit"],
+    "payments": ["payments", "payment", "billing", "invoicing"],
+    "healthtech": ["healthtech", "health tech", "healthcare", "medtech", "clinical"],
+    "insurtech": ["insurtech", "insurance"],
+    "hr tech": ["hr tech", "hrtech", "payroll", "hiring", "recruiting", "workforce"],
+    "data infrastructure": ["data infrastructure", "data platform", "analytics", "observability", "database"],
+    "devtools": ["developer", "devtools", "devops"],
+    "cybersecurity": ["cybersecurity", "security"],
+    "martech": ["martech", "marketing"],
+    "edtech": ["edtech", "learning"]
+  },
+  "rank_boost_keywords": ["enterprise", "expansion", "us launch", "global expansion", "fortune 500", "banks", "regulated", "international", "north america", "europe"],
+
+  "rank_weights": {
+    "recency": 0.45,
+    "industry": 0.35,
+    "boost_per_hit": 0.05,
+    "boost_cap": 0.15,
+    "saas_hit": 0.05,
+    "manual_domain_score": 999
+  },
+
+  "employee_range": [50, 200],
+  "employee_drop_above": 1000,
+
+  "audit_signal_max_age_days": 90,
+  "audit_role_keywords": ["grc", "governance, risk", "compliance", "security engineer", "information security", "infosec", "iso 27001", "soc 2", "soc2", "security analyst", "risk analyst", "privacy", "dpo", "data protection"],
+
+  "certifications": ["SOC 2", "ISO 27001", "GDPR"],
+  "competitor_trust_vendors": ["Vanta", "Drata"],
+
+  "poc_rules": {
+    "Series A": ["CTO", "VP Engineering", "Co-founder"],
+    "Series B": ["CTO", "VP Engineering", "Co-founder"],
+    "Series C": ["CISO", "Head of Security", "Head of Compliance", "CTO"]
+  },
+  "poc_title_aliases": {
+    "CTO": ["cto", "chief technology officer"],
+    "VP Engineering": ["vp engineering", "vp of engineering", "vice president engineering", "vice president of engineering", "head of engineering"],
+    "Co-founder": ["co-founder", "cofounder", "founder"],
+    "CISO": ["ciso", "chief information security officer"],
+    "Head of Security": ["head of security", "director of security", "vp security", "head of information security"],
+    "Head of Compliance": ["head of compliance", "compliance lead", "director of compliance", "head of grc"]
+  },
+  "hunter_min_confidence": 70,
+
+  "batch_size": 20,
+  "target_qualified_per_run": 5,
+  "max_batches_per_run": 3,
+  "max_refetches_per_company": 3,
+  "max_fetches_per_company": 6,
+  "seen_cooldown_days": 90,
+
+  "domain_tlds": [".com", ".io", ".ai", ".co", ".in"],
+  "domain_match_threshold": 85,
+
+  "page_keywords": {
+    "about": ["about", "company", "team", "who-we-are"],
+    "careers": ["careers", "jobs", "join", "hiring", "work-with-us", "greenhouse.io", "lever.co", "ashbyhq.com"],
+    "security": ["security"],
+    "trust": ["trust", "compliance"],
+    "pricing": ["pricing", "plans"],
+    "customers": ["customers", "case-studies", "case-study", "testimonials"]
+  },
+
+  "refetch_map": {
+    "is_saas": ["pricing", "about", "customers"],
+    "certifications_held": ["trust", "security"],
+    "trust_center_vendor": ["trust", "security"],
+    "audit_signals": ["careers", "security", "trust"],
+    "employee_count": ["about", "careers"]
+  },
+
+  "fit_weights": {
+    "employees_in_range": 0.25,
+    "enterprise_customers": 0.25,
+    "sensitive_industry": 0.20,
+    "cloud_stack_known": 0.10,
+    "partial_certifications": 0.20
+  },
+  "sensitive_industries": ["fintech", "payments", "healthtech", "insurtech", "hr tech"],
+
+  "http": {
+    "timeout_seconds": 12,
+    "max_retries": 2,
+    "backoff_seconds": 1.5,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+    "max_page_chars": 15000
+  }
+}
