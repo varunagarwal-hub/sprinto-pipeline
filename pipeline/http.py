@@ -36,7 +36,8 @@ def _cache_path(url: str):
 
 
 def fetch(url: str, *, use_cache: bool | None = None, timeout: float | None = None,
-          headers: dict[str, str] | None = None) -> FetchResult:
+          headers: dict[str, str] | None = None, retries: int | None = None,
+          quiet: bool = False) -> FetchResult:
     """GET url. use_cache defaults to True in dev. Retries network errors and 429/5xx only."""
     cfg = get_icp().http
     if use_cache is None:
@@ -48,7 +49,7 @@ def fetch(url: str, *, use_cache: bool | None = None, timeout: float | None = No
         return FetchResult(**{**data, "cached": True})
 
     hdrs = {"User-Agent": cfg["user_agent"], "Accept-Language": "en-US,en;q=0.9", **(headers or {})}
-    retries = int(cfg["max_retries"])
+    retries = int(cfg["max_retries"]) if retries is None else retries
     result = FetchResult(url=url, final_url=url, status=None, text="", ok=False)
     for attempt in range(retries + 1):
         try:
@@ -69,7 +70,7 @@ def fetch(url: str, *, use_cache: bool | None = None, timeout: float | None = No
 
     if not result.ok:
         result.error = result.error or f"HTTP {result.status}"
-        log.warning("fetch failed %s: %s", url, result.error)
+        (log.debug if quiet else log.warning)("fetch failed %s: %s", url, result.error)
     elif use_cache:
         HTTP_CACHE.mkdir(parents=True, exist_ok=True)
         payload = {**asdict(result), "fetched_at": datetime.now(timezone.utc).isoformat()}

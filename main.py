@@ -5,7 +5,8 @@
     python main.py stage1                  news -> gates -> ranked pool, prints top 20
     python main.py pool                    print the top 20 unseen companies in the pool
     python main.py --domains domains.txt   inject manual domains (domain[,name[,Series X]]) at top rank
-    python main.py run                     (build step 4) batch research loop
+    python main.py run                     batches of 20 until 5 qualified (icp.json), max 3 batches
+    python main.py extract <domain>        crawl + extract one domain, print evidence JSON
 """
 from __future__ import annotations
 
@@ -104,6 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("target", nargs="?", help="domain for the extract command")
     parser.add_argument("--domains", help="file of manual domains to inject into the pool")
     parser.add_argument("--name", help="company name for the extract command")
+    parser.add_argument("--target-qualified", type=int, help="override target_qualified_per_run for this run")
+    parser.add_argument("--max-batches", type=int, help="override max_batches_per_run for this run")
     args = parser.parse_args(argv)
 
     if args.domains:
@@ -122,8 +125,13 @@ def main(argv: list[str] | None = None) -> int:
         print_pool()
         return 0
     if args.command == "run":
-        print("Not implemented yet (build step 4).")
-        return 1
+        from pipeline.batch import run
+
+        summary = run(target=args.target_qualified, max_batches=args.max_batches)
+        print("\nRun summary:")
+        for k, v in summary.items():
+            print(f"  {k:<14} {v}")
+        return 0
     parser.print_help()
     return 0
 
