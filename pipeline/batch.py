@@ -68,10 +68,11 @@ def _flag(cid: int, reason: str) -> str:
 
 # ---------------------------------------------------------------- one company
 
-def research_company(c: dict, run_id: int) -> str:
+def research_company(c: dict, run_id: int, batch_no: int | None = None) -> str:
     cid = c["id"]
     current_company_id.set(cid)
-    _update_company(cid, status="researching", seen_at=date.today(), last_run_id=run_id)
+    _update_company(cid, status="researching", seen_at=date.today(), last_run_id=run_id, research_batch=batch_no,
+                    flag_reason=None, drop_reason=None, needs_review=False)
     log.info("=== %s (rank %.3f, %s)", c["name"], c["rank_score"], c["funding_stage"] or "stage?")
 
     # 6a. domain
@@ -174,7 +175,7 @@ def run(target: int | None = None, max_batches: int | None = None) -> dict[str, 
             log.info("--- Batch %d: %d companies", b, len(batch))
             for c in batch:
                 try:
-                    status = research_company(c, run_id)
+                    status = research_company(c, run_id, b)
                 except Exception as e:  # noqa: BLE001 - one company must never crash the batch
                     log.exception("research failed for %s", c["name"])
                     status = _flag(c["id"], f"error: {type(e).__name__}: {str(e)[:200]}")
