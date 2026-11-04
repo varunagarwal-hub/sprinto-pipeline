@@ -8,6 +8,8 @@
     python main.py run                     batches of 20 until 5 qualified (icp.json), max 3 batches
     python main.py extract <domain>        crawl + extract one domain, print evidence JSON
     python main.py poc                     find a PoC for qualified companies without one (HUNTER_MODE)
+    python main.py write [company_id]      draft emails (stored in Neon) for companies with a PoC
+    python main.py send <email_id>         send one draft via Resend to MY_EMAIL only
 """
 from __future__ import annotations
 
@@ -102,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     for noisy in ("httpx", "urllib3", "google_genai"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     parser = argparse.ArgumentParser(description="Sprinto cold outreach pipeline")
-    parser.add_argument("command", nargs="?", choices=["migrate", "check", "stage1", "pool", "extract", "run", "poc"])
+    parser.add_argument("command", nargs="?", choices=["migrate", "check", "stage1", "pool", "extract", "run", "poc", "write", "send"])
     parser.add_argument("target", nargs="?", help="domain for the extract command")
     parser.add_argument("--domains", help="file of manual domains to inject into the pool")
     parser.add_argument("--name", help="company name for the extract command")
@@ -131,6 +133,20 @@ def main(argv: list[str] | None = None) -> int:
               f"searches left: {credits_remaining(live)}")
         for r in run_pending():
             print(f"  {r['company']:<20} {r['status']}")
+        return 0
+    if args.command == "write":
+        from pipeline.write import run_pending as write_drafts
+
+        cid = int(args.target) if args.target else None
+        for r in write_drafts(company_id=cid):
+            print(f"  {r['company']:<20} {r['status']}")
+        return 0
+    if args.command == "send":
+        from pipeline.mailer import send_email
+
+        if not args.target:
+            parser.error("send needs an email id, e.g. python main.py send 3")
+        print(send_email(int(args.target)))
         return 0
     if args.command == "pool":
         print_pool()

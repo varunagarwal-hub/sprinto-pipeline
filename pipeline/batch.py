@@ -18,6 +18,7 @@ from pipeline.qualify import Outcome, gate_rows, qualify_company
 from pipeline.resolve import resolve
 from pipeline.scraper import Page, Scraper
 from pipeline.usage import current_company_id, current_run_id, current_stage
+from pipeline.write import run_pending as write_drafts
 
 log = logging.getLogger(__name__)
 
@@ -109,9 +110,11 @@ def research_company(c: dict, run_id: int) -> str:
     _persist_outcome(cid, run_id, evidence, out, scraper)
 
     # 6e. PoC (qualified only; counts toward the run target even if no contact is found)
+    # 6f. pain points + email draft (stored in Neon; a human approves before anything is sent)
     if out.status == "qualified":
         current_stage.set("poc")
-        find_poc({**c, "domain": domain, "status": "qualified"}, run_id)
+        if find_poc({**c, "domain": domain, "status": "qualified"}, run_id) == "qualified":
+            write_drafts(run_id, company_id=cid)
     return out.status
 
 

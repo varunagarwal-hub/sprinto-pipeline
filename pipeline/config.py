@@ -30,6 +30,9 @@ class Settings:
     my_email: str
     env: str  # "dev" or "prod"
     hunter_mode: str  # "mock" (default) or "live": live Hunter calls spend real credits
+    resend_api_key: str
+    resend_from: str
+    sender_name: str
 
     @property
     def is_dev(self) -> bool:
@@ -100,6 +103,9 @@ def get_settings() -> Settings:
         my_email=os.getenv("MY_EMAIL", ""),
         env=(os.getenv("PIPELINE_ENV") or "dev").lower(),
         hunter_mode=(os.getenv("HUNTER_MODE") or "mock").lower(),
+        resend_api_key=os.getenv("RESEND_API_KEY", ""),
+        resend_from=os.getenv("RESEND_FROM") or "Sprinto Outreach <onboarding@resend.dev>",
+        sender_name=os.getenv("SENDER_NAME", ""),
     )
 
 
