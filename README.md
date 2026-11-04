@@ -113,7 +113,7 @@ This rejects same-name companies (moment.com is not the payments company Moment)
 - **Run stop:** the run ends as soon as it has 5 qualified companies.
 
 ### Point of contact ([`pipeline/poc.py`](pipeline/poc.py))
-- **One Hunter Domain Search per company.** A stored live response is reused, never bought again. In live mode, the free `/account` check runs first, and the search is refused if fewer than 1 search remains.
+- **One Hunter Domain Search per company.** Each live response is saved to `.cache/hunter/<domain>.json` the moment it arrives, then to Neon, and is reused from then on, never bought again. In live mode, the free `/account` check runs first, and the search is refused if fewer than 1 search remains. Contacts are append-only: the newest row is the current PoC.
 - **Picking rules by stage:**
   - **Series A/B:** CTO, then VP Engineering, then co-founder.
   - **Series C:** CISO, then Head of Security, then Head of Compliance, then CTO.

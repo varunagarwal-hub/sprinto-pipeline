@@ -84,7 +84,7 @@
     "Head of Compliance": ["head of compliance", "compliance lead", "director of compliance", "head of grc"]
   },
   "hunter_min_confidence": 70,
-  "hunter_monthly_searches": 25,
+  "hunter_monthly_searches": 50,
   "hunter_search_params": {"seniority": "senior,executive", "limit": "10"},
 
   "batch_size": 20,
