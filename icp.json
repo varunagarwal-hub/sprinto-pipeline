@@ -104,6 +104,20 @@
     "customers": ["customers", "case-studies", "case-study", "testimonials"]
   },
 
+  "initial_page_order": ["trust", "careers", "security"],
+  "trust_vendor_domains": {
+    "Vanta": ["vanta.com"],
+    "Drata": ["drata.com"],
+    "SafeBase": ["safebase.io"],
+    "Whistic": ["whistic.com"],
+    "Conveyor": ["conveyor.com", "conveyor.io"],
+    "Secureframe": ["secureframe.com"],
+    "TrustCloud": ["trustcloud.ai"],
+    "Scrut": ["scrut.io"],
+    "Sprinto": ["sprinto.com"]
+  },
+  "ats_max_jobs": 60,
+
   "refetch_map": {
     "is_saas": ["pricing", "about", "customers"],
     "certifications_held": ["trust", "security"],

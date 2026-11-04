@@ -17,8 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 ICP_PATH = ROOT / "icp.json"
 CACHE_DIR = ROOT / ".cache"
 
-# Verified against the google-genai docs in build step 3; override with GEMINI_MODEL.
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+# Newest stable Flash model listed by models.list() on 2026-11-04; override with GEMINI_MODEL.
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 
 @dataclass(frozen=True)
@@ -66,6 +66,9 @@ class ICP:
     domain_tlds: list[str]
     domain_match_threshold: int
     page_keywords: dict[str, list[str]]
+    initial_page_order: list[str]
+    trust_vendor_domains: dict[str, list[str]]
+    ats_max_jobs: int
     refetch_map: dict[str, list[str]]
     fit_weights: dict[str, float]
     sensitive_industries: list[str]

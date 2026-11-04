@@ -76,13 +76,34 @@ def cmd_domains(path: str) -> int:
     return 0
 
 
+def cmd_extract(domain: str, name: str | None) -> int:
+    """Build-step-3 demo: crawl one domain and print the verified evidence JSON."""
+    import json
+
+    from pipeline.extract import extract
+    from pipeline.scraper import Scraper
+
+    s = Scraper(domain)
+    pages = s.initial_crawl()
+    print(f"\nFetched {s.fetches}/{s.icp.max_fetches_per_company} "
+          f"(reserve {s.icp.max_refetches_per_company} for the agent loop):")
+    for p in pages:
+        print(f"  {p.page_type:<9} {p.status} {'ok ' if p.ok else 'ERR'} {len(p.text):>6} chars  {p.url}")
+    print("Discovered candidates:", {k: len(v) for k, v in s.candidates.items()}, "| ATS:", s.ats_board)
+    evidence = extract(name or domain.split(".")[0].capitalize(), domain, pages)
+    print(json.dumps(evidence, indent=2, ensure_ascii=False))
+    return 0 if evidence else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    for noisy in ("httpx", "urllib3"):
+    for noisy in ("httpx", "urllib3", "google_genai"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     parser = argparse.ArgumentParser(description="Sprinto cold outreach pipeline")
-    parser.add_argument("command", nargs="?", choices=["migrate", "check", "stage1", "pool", "run"])
+    parser.add_argument("command", nargs="?", choices=["migrate", "check", "stage1", "pool", "extract", "run"])
+    parser.add_argument("target", nargs="?", help="domain for the extract command")
     parser.add_argument("--domains", help="file of manual domains to inject into the pool")
+    parser.add_argument("--name", help="company name for the extract command")
     args = parser.parse_args(argv)
 
     if args.domains:
@@ -93,6 +114,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check()
     if args.command == "stage1":
         return cmd_stage1()
+    if args.command == "extract":
+        if not args.target:
+            parser.error("extract needs a domain, e.g. python main.py extract findem.ai --name Findem")
+        return cmd_extract(args.target, args.name)
     if args.command == "pool":
         print_pool()
         return 0
