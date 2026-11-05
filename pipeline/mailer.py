@@ -75,5 +75,11 @@ def send_email(email_id: int, body: str | None = None, subject: str | None = Non
                       provider_message_id=%s, status='sent', sent_at=now() WHERE id=%s""",
             (body, subj, s.my_email, rate, msg_id, email_id))
         conn.execute("UPDATE companies SET status='sent', updated_at=now() WHERE id=%s", (e["cid"],))
+    # CAPTURE: the reviewer's edit is the strongest writing signal we get
+    from pipeline.feedback import capture
+    capture("draft_sent", "reviewer", e["cid"], email_id,
+            payload={"edit_rate": rate, "original_body": e["original_body"], "sent_body": body,
+                     "original_subject": e["subject"], "sent_subject": subject or e["subject"],
+                     "learnings_applied": e.get("learnings_applied") or []})
     log.info("sent email %d to %s (resend id %s, edit rate %.3f)", email_id, s.my_email, msg_id, rate)
     return {"email_id": email_id, "resend_id": msg_id, "to": s.my_email, "subject": subj, "edit_rate": rate}

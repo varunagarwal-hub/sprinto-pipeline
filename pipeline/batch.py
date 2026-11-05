@@ -79,13 +79,16 @@ def research_company(c: dict, run_id: int, batch_no: int | None = None) -> str:
     domain = c["domain"]
     if not domain:
         current_stage.set("resolve")
-        headline = next((g.get("headline") for g in c["stage1_evidence"] or [] if g.get("headline")), None)
-        res = resolve(c["name"], headline)
+        fund = next((g for g in c["stage1_evidence"] or [] if g.get("gate") == "funding_stage"), {})
+        res = resolve(c["name"], fund.get("headline"), news_url=fund.get("url"))
+        if res.article_url:
+            _update_company(cid, article_url=res.article_url)
         _decision(cid, run_id, "resolve", "domain", "pass" if res.domain else "unknown",
-                  {"domain": res.domain, "tried": res.tried},
+                  {"domain": res.domain, "tried": res.tried, "article_url": res.article_url},
                   (res.evidence or {}).get("brand_text"), (res.evidence or {}).get("url"), None,
-                  f"homepage brand text names '{c['name']}' and shares topic words {res.evidence['topic_overlap']}"
-                  if res.domain else "no candidate domain matched name + topic")
+                  (f"found via {res.evidence['source']}: homepage names '{c['name']}' "
+                   f"({', '.join(res.evidence['topic_overlap'])})") if res.domain
+                  else "no candidate domain matched name + topic")
         if not res.domain:
             return _flag(cid, f"domain unresolved (tried {', '.join(t['domain'] for t in res.tried)})")
         domain = res.domain
@@ -93,7 +96,7 @@ def research_company(c: dict, run_id: int, batch_no: int | None = None) -> str:
 
     # 6b. initial crawl + 6c. extraction
     current_stage.set("scrape")
-    scraper = Scraper(domain)
+    scraper = Scraper(domain, company=c["name"])
     pages = scraper.initial_crawl()
     record = _recorder(cid, run_id)
     if not any(p.ok and p.page_type == "homepage" for p in pages):
@@ -147,8 +150,45 @@ def _counts(run_id: int) -> dict[str, int]:
     return {r["status"]: r["n"] for r in rows}
 
 
+def process_queue() -> list[dict]:
+    """Work queued from the web dashboard (which can't crawl or call Gemini on Vercel):
+    'research' after a reviewer supplied a domain, 'regenerate' after a hook switch."""
+    with db.connect() as conn:
+        rows = conn.execute("SELECT * FROM companies WHERE queued_action IS NOT NULL ORDER BY updated_at").fetchall()
+        run_id = conn.execute("SELECT max(id) m FROM runs").fetchone()["m"]
+    out = []
+    for c in rows:
+        action = c["queued_action"]
+        log.info("=== queued %s for %s", action, c["name"])
+        try:
+            if action == "research":
+                status = research_company(c, c["last_run_id"] or run_id, c["research_batch"])
+            elif action == "regenerate":
+                res = write_drafts(company_id=c["id"])
+                status = res[0]["status"] if res else "no contact"
+            else:
+                status = f"unknown action {action}"
+        except Exception as e:  # noqa: BLE001
+            log.exception("queued %s failed for %s", action, c["name"])
+            status = f"error: {type(e).__name__}"
+        _update_company(c["id"], queued_action=None)
+        out.append({"company": c["name"], "action": action, "status": status})
+    return out
+
+
+def sync() -> dict[str, Any]:
+    """Close the loop between the web dashboard and the pipeline: run queued work, then learn."""
+    from pipeline import feedback
+
+    queued = process_queue()
+    backfilled = feedback.backfill()
+    learned = feedback.learn()
+    return {"queued": queued, "backfilled_events": backfilled, "learned": learned}
+
+
 def run(target: int | None = None, max_batches: int | None = None) -> dict[str, Any]:
     icp = get_icp()
+    log.info("sync before run: %s", sync())     # learn from every signal captured since the last run
     target = target or icp.target_qualified_per_run
     max_batches = max_batches or icp.max_batches_per_run
     with db.connect() as conn:

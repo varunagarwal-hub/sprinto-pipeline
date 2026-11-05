@@ -13,7 +13,9 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel
 
 from pipeline import db
+from pipeline import feedback as feedback_loop
 from pipeline.config import ROOT, ICP, get_icp, get_settings
+from pipeline.feedback import hook_group, role_key
 from pipeline.llm import generate_json
 from pipeline.qualify import parse_date
 from pipeline.stage1 import keyword_hits
@@ -52,9 +54,11 @@ def build_catalog(company: dict, evidence: dict) -> list[dict]:
     return items
 
 
-def hook_candidates(catalog: list[dict], icp: ICP, today: date) -> list[dict]:
-    """Dated items only (the hook must be dated). Fresh audit signals first, then the funding round,
-    then anything else dated, newest first within each group."""
+def hook_candidates(catalog: list[dict], icp: ICP, today: date,
+                    learned: dict[str, float] | None = None) -> list[dict]:
+    """Dated items only (the hook must be dated). Default order: fresh audit signals, then the funding
+    round, then anything else dated, newest first within each group. Once enough prospect outcomes exist,
+    learned hook-type scores (feedback.hook_preferences) re-order the groups; the default is the tiebreak."""
     def group(it: dict) -> int:
         d = parse_date(it["date"])
         fresh = d is not None and (today - d).days <= icp.audit_signal_max_age_days
@@ -63,15 +67,26 @@ def hook_candidates(catalog: list[dict], icp: ICP, today: date) -> list[dict]:
         if it["field"] == "funding":
             return 1
         return 2
+
+    def learned_score(it: dict) -> float:
+        if not learned:
+            return 0.0
+        return -learned.get(hook_group(it["field"]), 0.5)
     dated = [it for it in catalog if parse_date(it["date"])]
-    return sorted(dated, key=lambda it: (group(it), -parse_date(it["date"]).toordinal()))
+    return sorted(dated, key=lambda it: (learned_score(it), group(it), -parse_date(it["date"]).toordinal()))
+
+
+ROLE_ANGLES = {
+    "security": "security leader: talk control coverage, continuous monitoring and audit readiness across frameworks",
+    "executive": "founder/CEO: talk revenue, enterprise deals no longer stalled by security reviews, and a team that "
+                 "stays focused on product",
+    "engineering": "engineering leader: talk engineering hours saved, no audit fire drills, sales not blocked by "
+                   "security reviews",
+}
 
 
 def role_angle(title: str | None) -> str:
-    t = (title or "").lower()
-    if keyword_hits(t, ["ciso", "security", "compliance", "grc", "risk"]):
-        return "security leader: talk control coverage, continuous monitoring and audit readiness across frameworks"
-    return "engineering leader: talk engineering hours saved, no audit fire drills, sales not blocked by security reviews"
+    return ROLE_ANGLES[role_key(title)]
 
 
 # ---------------------------------------------------------------- writer
@@ -110,7 +125,7 @@ Output:
 
 
 def build_prompt(company: dict, contact: dict, catalog: list[dict], hook_id: str, sprinto_text: str,
-                 sender: str, feedback: list[str] | None = None) -> str:
+                 sender: str, feedback: list[str] | None = None, lessons: list[dict] | None = None) -> str:
     parts = [
         f"PROSPECT: {contact['first_name']} ({contact['full_name']}), {contact['title']} at {company['name']} "
         f"({company['domain']})",
@@ -120,6 +135,9 @@ def build_prompt(company: dict, contact: dict, catalog: list[dict], hook_id: str
         "EVIDENCE:\n" + json.dumps(catalog, indent=1, ensure_ascii=False),
         "SPRINTO VALUE PROPS:\n" + sprinto_text,
     ]
+    if lessons:
+        parts.append("REVIEWER PREFERENCES (learned from past edits, ratings and replies; follow them, "
+                     "but never at the cost of the hard rules):\n- " + "\n- ".join(l["lesson"] for l in lessons))
     if feedback:
         parts.append("YOUR PREVIOUS DRAFT FAILED THESE CHECKS. Fix every one:\n- " + "\n- ".join(feedback))
     return "\n\n".join(parts)
@@ -162,7 +180,7 @@ def ungrounded_terms(body: str, corpus: str) -> tuple[list[str], list[str]]:
 
 
 def validate(draft: EmailDraft, catalog: list[dict], hook_id: str, company: dict, contact: dict,
-             sprinto_text: str, sender: str) -> list[str]:
+             sprinto_text: str, sender: str, avoid_phrases: list[str] | None = None) -> list[str]:
     errs: list[str] = []
     ids = {it["id"] for it in catalog}
     body = draft.body.strip()
@@ -201,6 +219,9 @@ def validate(draft: EmailDraft, catalog: list[dict], hook_id: str, company: dict
         errs.append(f"numbers not found in evidence: {bad_nums}")
     if bad_names:
         errs.append(f"names/terms not found in evidence: {bad_names}")
+    used = [p for p in (avoid_phrases or []) if p in re.sub(r"\s+", " ", body.lower())]
+    if used:
+        errs.append(f"uses phrases reviewers keep removing: {used}")
     return errs
 
 
@@ -214,7 +235,16 @@ def generate_for_company(company: dict, contact: dict, run_id: int | None = None
     sender = settings.sender_name or "The Sprinto team"
     sprinto_text = SPRINTO_MD.read_text(encoding="utf-8")
     catalog = build_catalog(company, company["evidence"] or {})
-    candidates = hook_candidates(catalog, icp, date.today())
+
+    # RETRIEVE: learnings for this kind of prospect (role / industry / stage) and learned hook preferences
+    ctx = {"role": role_key(contact.get("title")), "industry": company.get("industry_tags") or [],
+           "stage": company.get("funding_stage")}
+    lessons = feedback_loop.retrieve("writer", ctx)
+    hook_prefs = feedback_loop.hook_preferences()
+    hook_learning_ids = [r["id"] for r in feedback_loop.retrieve("hook", limit=50)] if hook_prefs else []
+    avoid = [l["key"].split(":", 1)[1] for l in lessons if l["kind"] == "avoid_phrase"]
+
+    candidates = hook_candidates(catalog, icp, date.today(), hook_prefs or None)
     chosen = (company.get("chosen_hook") or {}).get("evidence_id")
     hook = next((it for it in catalog if it["id"] == chosen), None) or (candidates[0] if candidates else None)
     if not hook:
@@ -225,14 +255,14 @@ def generate_for_company(company: dict, contact: dict, run_id: int | None = None
     log_: list[dict] = []
     draft = None
     for attempt in (1, 2):
-        prompt = build_prompt(company, contact, catalog, hook["id"], sprinto_text, sender, feedback)
+        prompt = build_prompt(company, contact, catalog, hook["id"], sprinto_text, sender, feedback, lessons)
         res = generate_json(prompt, EmailDraft, system=SYSTEM, stage="write", temperature=0.4)
         if res.data is None:
             log_.append({"attempt": attempt, "errors": [f"Gemini error: {res.error}"]})
             feedback = None
             continue
         draft = res.data
-        errs = validate(draft, catalog, hook["id"], company, contact, sprinto_text, sender)
+        errs = validate(draft, catalog, hook["id"], company, contact, sprinto_text, sender, avoid)
         log_.append({"attempt": attempt, "errors": errs, "tokens_in": res.tokens_in, "tokens_out": res.tokens_out})
         if not errs:
             break
@@ -240,21 +270,29 @@ def generate_for_company(company: dict, contact: dict, run_id: int | None = None
         log.info("  draft attempt %d failed validation: %s", attempt, errs)
 
     ok = draft is not None and not log_[-1]["errors"]
+    applied = [l["id"] for l in lessons] + hook_learning_ids
     with db.connect() as conn:
         conn.execute("DELETE FROM emails WHERE company_id=%s AND status IN ('drafted','flagged')", (cid,))
-        conn.execute(
+        email_id = conn.execute(
             """INSERT INTO emails (company_id, contact_id, run_id, pain_points, hook, claims, subject, original_body,
-                                   validator_log, attempts, status, evidence_catalog, hook_candidates)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                                   validator_log, attempts, status, evidence_catalog, hook_candidates,
+                                   learnings_applied)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
             (cid, contact["id"], run_id,
              Jsonb([p.model_dump() for p in draft.pain_points]) if draft else None,
              Jsonb({**(draft.hook.model_dump() if draft else {}), "evidence_id": hook["id"], "url": hook["url"],
                     "date": hook["date"], "quote": hook["quote"]}),
              Jsonb([c.model_dump() for c in draft.claims]) if draft else None,
              draft.subject if draft else None, draft.body if draft else None,
-             Jsonb(log_), len(log_), "drafted" if ok else "flagged", Jsonb(catalog), Jsonb(candidates)))
-        conn.execute("UPDATE companies SET status=%s, updated_at=now() WHERE id=%s",
+             Jsonb(log_), len(log_), "drafted" if ok else "flagged", Jsonb(catalog), Jsonb(candidates),
+             applied)).fetchone()["id"]
+        conn.execute("UPDATE companies SET status=%s, queued_action=NULL, updated_at=now() WHERE id=%s",
                      ("drafted" if ok else "qualified", cid))
+    # APPLY bookkeeping: which learnings shaped this draft
+    feedback_loop.record_applications([l["id"] for l in lessons], "writer", cid, email_id)
+    feedback_loop.record_applications(hook_learning_ids, "hook", cid, email_id)
+    if lessons:
+        log.info("  applied %d writer learning(s): %s", len(lessons), [l["key"] for l in lessons])
     if not ok:
         _flag(cid, f"email failed validation twice: {log_[-1]['errors'][:3]}")
         return "flagged"

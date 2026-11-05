@@ -30,6 +30,7 @@ class Resolution:
     domain: str | None
     tried: list[dict] = field(default_factory=list)
     evidence: dict | None = None
+    article_url: str | None = None   # publisher URL decoded from the Google News link
 
 
 def slugs(name: str) -> list[str]:
@@ -90,33 +91,56 @@ def topic_overlap(headline: str, name: str, page_text: str) -> list[str]:
     return sorted(topic_words(headline, name) & page_prefixes)
 
 
-def resolve(name: str, headline: str | None, icp: ICP | None = None) -> Resolution:
+def _check(dom: str, name: str, headline: str | None, source: str) -> tuple[dict, dict | None]:
+    """Fetch a candidate homepage and apply the acceptance rule. Returns (attempt log, evidence or None)."""
+    r = fetch(f"https://{dom}/", retries=0, timeout=8, quiet=True)
+    attempt = {"domain": dom, "source": source, "status": r.status, "final_url": r.final_url, "error": r.error}
+    if not r.ok:
+        return attempt, None
+    brand = brand_text(r.text)
+    attempt["brand"] = brand[:200]
+    if PARKED.search(r.text[:20000]):
+        attempt["result"] = "parked"
+        return attempt, None
+    in_host = len(_compact(name)) >= 3 and _compact(name) in _compact(dom)
+    if not name_matches(name, brand) and not (source == "article" and in_host):
+        attempt["result"] = "name_not_in_brand"
+        return attempt, None
+    if source == "article":
+        overlap = ["linked from the funding article"]
+    else:
+        overlap = topic_overlap(headline, name, BeautifulSoup(r.text, "html.parser").get_text(" ")) if headline else ["manual"]
+    attempt["topic_overlap"] = overlap
+    if not overlap:
+        attempt["result"] = "no_topic_overlap"
+        return attempt, None
+    attempt["result"] = "accepted"
+    return attempt, {"brand_text": brand[:300], "url": r.final_url, "topic_overlap": overlap, "source": source}
+
+
+def resolve(name: str, headline: str | None, icp: ICP | None = None, news_url: str | None = None) -> Resolution:
+    """1) company links inside the decoded funding article, 2) {slug}{tld} guesses."""
+    from pipeline import gnews
+
     icp = icp or get_icp()
     res = Resolution(domain=None)
-    for dom in candidates(name, icp):
-        r = fetch(f"https://{dom}/", retries=0, timeout=8, quiet=True)
-        attempt = {"domain": dom, "status": r.status, "final_url": r.final_url, "error": r.error}
+    article_url = gnews.decode(news_url) if news_url else None
+    article_hosts: list[str] = []
+    if article_url:
+        art = fetch(article_url, retries=1, timeout=12, quiet=True)
+        if art.ok:
+            article_hosts = gnews.company_links(art.text, art.final_url, name)[:4]
+    res.article_url = article_url
+    for dom, source in [(h, "article") for h in article_hosts] + [(d, "guess") for d in candidates(name, icp)]:
+        if any(t["domain"] == dom for t in res.tried):
+            continue
+        attempt, ev = _check(dom, name, headline, source)
         res.tried.append(attempt)
-        if not r.ok:
-            continue
-        final_host = (re.sub(r"^https?://", "", r.final_url).split("/")[0]).removeprefix("www.")
-        brand = brand_text(r.text)
-        attempt["brand"] = brand[:200]
-        if PARKED.search(r.text[:20000]):
-            attempt["result"] = "parked"
-            continue
-        if not name_matches(name, brand):
-            attempt["result"] = "name_not_in_brand"
-            continue
-        overlap = topic_overlap(headline, name, BeautifulSoup(r.text, "html.parser").get_text(" ")) if headline else ["manual"]
-        attempt["topic_overlap"] = overlap
-        if not overlap:
-            attempt["result"] = "no_topic_overlap"
-            continue
-        attempt["result"] = "accepted"
-        res.domain = final_host if final_host.endswith(dom.split(".", 1)[1]) else dom
-        res.evidence = {"brand_text": brand[:300], "url": r.final_url, "topic_overlap": overlap}
-        log.info("resolved %s -> %s (brand: %s)", name, res.domain, brand[:80])
-        return res
+        if ev:
+            final_host = (re.sub(r"^https?://", "", ev["url"]).split("/")[0]).removeprefix("www.")
+            res.domain = final_host if final_host.split(".")[-1] == dom.split(".")[-1] else dom
+            res.evidence = ev
+            log.info("resolved %s -> %s via %s (brand: %s)", name, res.domain, source, ev["brand_text"][:80])
+            return res
     log.info("unresolved %s (tried %s)", name, ", ".join(t["domain"] for t in res.tried))
     return res

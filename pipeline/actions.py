@@ -18,7 +18,16 @@ def _company(cid: int) -> dict:
         return conn.execute("SELECT * FROM companies WHERE id=%s", (cid,)).fetchone()
 
 
+CAPTURE_KIND = {("status", "qualified"): "override_qualify", ("status", "dropped"): "override_drop",
+                ("review", None): "review_approved", ("hook", None): "hook_switch", ("domain", None): "domain_provided"}
+
+
 def _human_decision(cid: int, gate: str, value: Any, reason: str) -> None:
+    from pipeline.feedback import capture
+    kind = CAPTURE_KIND.get((gate, (value or {}).get("to") if isinstance(value, dict) else None)) \
+        or CAPTURE_KIND.get((gate, None))
+    if kind:
+        capture(kind, "reviewer", cid, note=reason, payload=value if isinstance(value, dict) else {"value": value})
     with db.connect() as conn:
         conn.execute(
             """INSERT INTO decisions (company_id, run_id, stage, gate, result, value, reason, decided_by)
@@ -98,7 +107,14 @@ def choose_hook(cid: int, evidence_id: str) -> str:
     """Switch the email hook to another dated evidence item and regenerate the draft."""
     from pipeline.write import run_pending as write_drafts
 
-    _human_decision(cid, "hook", {"evidence_id": evidence_id}, "hook chosen by reviewer")
+    with db.connect() as conn:
+        e = conn.execute("""SELECT hook, evidence_catalog FROM emails WHERE company_id=%s
+                            AND status IN ('drafted','flagged') ORDER BY id DESC LIMIT 1""", (cid,)).fetchone()
+    by_id = {it["id"]: it for it in (e["evidence_catalog"] if e else []) or []}
+    old = (e["hook"] or {}).get("evidence_id") if e else None
+    _human_decision(cid, "hook", {"evidence_id": evidence_id, "from": old,
+                                  "from_field": by_id.get(old, {}).get("field"),
+                                  "to_field": by_id.get(evidence_id, {}).get("field")}, "hook chosen by reviewer")
     with db.connect() as conn:
         conn.execute("UPDATE companies SET chosen_hook=%s, needs_review=false, updated_at=now() WHERE id=%s",
                      (Jsonb({"evidence_id": evidence_id, "by": "human"}), cid))

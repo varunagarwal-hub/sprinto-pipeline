@@ -76,6 +76,42 @@ def parse_jobs(kind: str, body: str) -> list[Job]:
     return jobs
 
 
+def _compact(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def probe_slugs(domain: str, company: str) -> list[str]:
+    label = domain.split(".")[0]
+    return list(dict.fromkeys(s for s in [label, _compact(company)] if len(s) >= 3))
+
+
+def probe(domain: str, company: str, fetch_fn) -> tuple[str, str, str, list[Job]] | None:
+    """Try public Greenhouse / Lever / Ashby boards named after the domain/company.
+    Accept only if the board's raw JSON mentions the company name (guards against same-slug strangers).
+    Returns (kind, token, api_url, jobs). fetch_fn(url) -> FetchResult."""
+    name = _compact(company)
+    for slug in probe_slugs(domain, company):
+        for kind in ("greenhouse", "lever", "ashby"):
+            url = api_url(kind, slug)
+            r = fetch_fn(url)
+            if not r.ok or not r.text.strip():
+                continue
+            try:
+                jobs = parse_jobs(kind, r.text)
+            except ValueError:
+                continue
+            if not jobs:
+                continue
+            if kind == "greenhouse":
+                meta = fetch_fn(f"https://boards-api.greenhouse.io/v1/boards/{slug}")
+                ok = meta.ok and name in _compact(meta.text)
+            else:
+                ok = name in _compact(r.text) or _compact(domain) in _compact(r.text)
+            if ok:
+                return kind, slug, url, jobs
+    return None
+
+
 def render_jobs(jobs: list[Job], audit_keywords: list[str], max_jobs: int) -> str:
     """Plain-text job list for the extractor; audit-relevant roles first so truncation never hides them."""
     relevant = [j for j in jobs if keyword_hits(j.title, audit_keywords)]

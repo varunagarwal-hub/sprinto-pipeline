@@ -130,8 +130,10 @@ def discover_links(html: str, base_url: str, domain: str, icp: ICP) -> dict[str,
 
 
 class Scraper:
-    def __init__(self, domain: str, icp: ICP | None = None):
+    def __init__(self, domain: str, icp: ICP | None = None, company: str | None = None):
         self.icp = icp or get_icp()
+        self.company = company
+        self._probed = False
         self.domain = domain.lower().removeprefix("www.")
         self.pages: list[Page] = []
         self.candidates: dict[str, list[str]] = {}
@@ -226,7 +228,13 @@ class Scraper:
                     self.ats_board = ats.find_ats(self._raw_html)
                     if self.ats_board and self.budget_left > 0:
                         self._fetch_ats()
+                    elif not self.ats_board:
+                        self.probe_ats()
                 return page
+        if page_type == "careers" and not self.ats_board:
+            probed = self.probe_ats()
+            if probed:
+                return probed
         # Fallback: guess the conventional path once.
         guess = f"https://{self.domain}/{page_type}"
         if guess not in self.tried:
@@ -234,6 +242,26 @@ class Scraper:
             if page and page.ok:
                 return page
         return None
+
+    def probe_ats(self) -> Page | None:
+        """No board linked: try Greenhouse/Lever/Ashby named after the domain. Misses are free;
+        an accepted board counts as one fetch."""
+        if self._probed or not self.company or self.budget_left <= 0:
+            return None
+        self._probed = True
+        found = ats.probe(self.domain, self.company, lambda u: fetch(u, retries=0, timeout=8, quiet=True))
+        if not found:
+            log.info("[%s] ats probe: no public board found", self.domain)
+            return None
+        kind, token, url, jobs = found
+        self.ats_board = (kind, token)
+        self.fetches += 1
+        self.tried.add(url)
+        text = ats.render_jobs(jobs, self.icp.audit_role_keywords, self.icp.ats_max_jobs)
+        page = Page(url=url, page_type="ats", text=text, status=200, ok=True)
+        self.pages.append(page)
+        log.info("[%s] ats probe: found %s board '%s' with %d jobs", self.domain, kind, token, len(jobs))
+        return page
 
     def initial_crawl(self) -> list[Page]:
         """Homepage + highest-priority pages, keeping max_refetches_per_company fetches for the agent loop."""

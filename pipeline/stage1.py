@@ -182,25 +182,32 @@ def industry_match(text: str, icp: ICP) -> tuple[float, list[str]]:
     return weight, tags
 
 
-def rank(item: NewsItem, age_days: int, icp: ICP) -> tuple[float, dict[str, Any], list[str], list[str]]:
+def rank(item: NewsItem, age_days: int, icp: ICP,
+         learned: dict[str, dict] | None = None) -> tuple[float, dict[str, Any], list[str], list[str]]:
+    """learned: {industry: {"delta", "id"}} from feedback.industry_adjustments() (the loop's Apply step)."""
     w = icp.rank_weights
     max_days = icp.funding_max_age_months * 30.44
     recency = max(0.0, 1.0 - age_days / max_days)
     ind_weight, tags = industry_match(item.headline, icp)
     boosts = keyword_hits(item.headline, icp.rank_boost_keywords)
     saas = keyword_hits(item.headline, icp.saas_keywords)
+    hits = [learned[t] for t in (tags or ["(untagged)"]) if learned and t in learned]
+    learned_delta = max(-0.15, min(0.15, sum(h["delta"] for h in hits))) if hits else 0.0
     parts = {
         "recency": round(w["recency"] * recency, 4),
         "industry": round(w["industry"] * ind_weight, 4),
         "boost": round(min(w["boost_cap"], w["boost_per_hit"] * len(boosts)), 4),
         "saas": round(w["saas_hit"] if saas else 0.0, 4),
+        "learned": round(learned_delta, 4),
     }
-    breakdown = {**parts, "inputs": {"age_days": age_days, "industry_weight": ind_weight,
-                                     "industry_tags": tags, "boost_hits": boosts, "saas_hits": saas}}
+    breakdown = {**parts, "inputs": {"age_days": age_days, "industry_weight": ind_weight, "industry_tags": tags,
+                                     "boost_hits": boosts, "saas_hits": saas,
+                                     "learning_ids": [h["id"] for h in hits]}}
     return round(sum(parts.values()), 4), breakdown, tags, saas
 
 
-def evaluate_item(item: NewsItem, icp: ICP, today: date) -> tuple[Candidate | None, str | None]:
+def evaluate_item(item: NewsItem, icp: ICP, today: date,
+                  learned: dict[str, dict] | None = None) -> tuple[Candidate | None, str | None]:
     """Apply Stage 1 gates to one news item. Returns (candidate, None) or (None, drop_reason)."""
     ev = {"headline": item.headline, "url": item.url, "date": item.published.isoformat(),
           "publisher": item.publisher}
@@ -225,7 +232,7 @@ def evaluate_item(item: NewsItem, icp: ICP, today: date) -> tuple[Candidate | No
     if excluded:
         return None, f"excluded_keyword:{excluded[0]}"
 
-    score, breakdown, tags, saas = rank(item, age_days, icp)
+    score, breakdown, tags, saas = rank(item, age_days, icp, learned)
     gates = [
         {"gate": "name_parse", "result": "pass", "value": name, **ev},
         {"gate": "funding_stage", "result": "pass", "value": stage, **ev},
@@ -368,11 +375,13 @@ def run_stage1(today: date | None = None) -> dict[str, Any]:
         s1_id = conn.execute("INSERT INTO stage1_runs DEFAULT VALUES RETURNING id").fetchone()["id"]
         conn.commit()
 
+    from pipeline.feedback import industry_adjustments
+    learned = industry_adjustments()          # Apply: reviewer/prospect feedback nudges industry rank
     raw, n_feeds = fetch_news(icp)
     items = _unique_items(raw)
     kept, drops = [], []
     for it in items:
-        cand, reason = evaluate_item(it, icp, today)
+        cand, reason = evaluate_item(it, icp, today, learned)
         if cand:
             kept.append(cand)
         else:

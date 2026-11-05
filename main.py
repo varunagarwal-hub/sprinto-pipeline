@@ -10,6 +10,8 @@
     python main.py poc                     find a PoC for qualified companies without one (HUNTER_MODE)
     python main.py write [company_id]      draft emails (stored in Neon) for companies with a PoC
     python main.py send <email_id>         send one draft via Resend to MY_EMAIL only
+    python main.py learn                   distil captured feedback into learnings (Store)
+    python main.py sync                    run work queued from the web dashboard, then learn
 """
 from __future__ import annotations
 
@@ -104,7 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     for noisy in ("httpx", "urllib3", "google_genai"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     parser = argparse.ArgumentParser(description="Sprinto cold outreach pipeline")
-    parser.add_argument("command", nargs="?", choices=["migrate", "check", "stage1", "pool", "extract", "run", "poc", "write", "send"])
+    parser.add_argument("command", nargs="?", choices=["migrate", "check", "stage1", "pool", "extract", "run", "poc", "write", "send",
+                                                      "learn", "sync"])
     parser.add_argument("target", nargs="?", help="domain for the extract command")
     parser.add_argument("--domains", help="file of manual domains to inject into the pool")
     parser.add_argument("--name", help="company name for the extract command")
@@ -150,6 +153,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "pool":
         print_pool()
+        return 0
+    if args.command == "learn":
+        from pipeline.feedback import backfill, learn
+
+        print(f"backfilled {backfill()} events; learned {learn()}")
+        return 0
+    if args.command == "sync":
+        from pipeline.batch import sync
+
+        import json as _json
+        print(_json.dumps(sync(), indent=2, default=str))
         return 0
     if args.command == "run":
         from pipeline.batch import run
