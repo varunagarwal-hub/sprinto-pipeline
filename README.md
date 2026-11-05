@@ -13,7 +13,10 @@ Google News RSS ──► Stage 1: regex gates + rank (no LLM, no scraping) ─�
                                       │
                     Hunter PoC (1 search) ─► Gemini writer ─► code validator ─► draft in Neon
                                                                                      │
-  Streamlit dashboard: clear flags, switch hook, edit, Approve & send ─► Resend ─► MY_EMAIL only
+  Web dashboard (Next.js on Vercel): clear flags, switch hook, edit, rate, Approve & send ─► Resend ─► MY_EMAIL only
+                                                                                     │
+  Feedback loop: every edit / rating / override / outcome ─► feedback_events ─► learn ─► learnings
+                 ─► retrieved for the next drafts, hook choice and Stage 1 rank
 ```
 
 Gemini only **extracts** facts and **writes** the email. Python rules make every decision.
@@ -46,8 +49,11 @@ The `.env` file holds:
 .venv/Scripts/python main.py stage1                    # news -> gates -> ranked pool; prints the top 20
 .venv/Scripts/python main.py --domains domains.txt     # add manual domains at the top of the pool
 .venv/Scripts/python main.py run                       # batches of 20 until 5 qualified (max 3 batches)
-.venv/Scripts/python -m streamlit run dashboard.py     # review, edit, approve & send
+.venv/Scripts/python main.py sync                      # run work queued from the web dashboard, then learn
+cd web && npm install && npm run dev                   # dashboard on http://localhost:3000
 ```
+
+`dashboard.py` (Streamlit) still works locally as a fallback: `.venv/Scripts/python -m streamlit run dashboard.py`.
 
 Single-step commands, useful for demos and debugging:
 
@@ -58,6 +64,8 @@ Single-step commands, useful for demos and debugging:
 | `main.py write [company_id]` | Write or regenerate drafts |
 | `main.py send <email_id>` | Send one draft to `MY_EMAIL` |
 | `main.py pool` | Print the top 20 of the pool |
+| `main.py learn` | Distil captured feedback into learnings |
+| `main.py sync` | Run queued research / redrafts / PoCs from the web, backfill and learn |
 
 Tests: `.venv/Scripts/python -m pytest -q` runs 98 tests covering the Stage 1 regexes and gates, quote verification, qualifier rules, PoC picking and the email validator.
 
@@ -131,11 +139,32 @@ This rejects same-name companies (moment.com is not the payments company Moment)
   If any check fails, the draft is regenerated once with the errors as feedback. A second failure flags it.
 - **Sending:** the sender has **no `to` parameter**, so mail can only go to `MY_EMAIL`. The subject is prefixed `[DRAFT for <PoC> @ <company>]`. Neon stores both the generated and the sent body, plus the edit rate (normalised Levenshtein distance).
 
-## Human gates (dashboard)
-1. **Flagged queue:** Qualify, Approve as is, Drop (with a reason), or Provide domain & research, which reruns the full research for that one company.
-2. **Drafts:** see the PoC and why they were picked, plus the hook and pain points with source links. You can switch the hook and regenerate. You can edit the subject and body, with a live check that every term is still in the evidence. **Approve & send** sends your edited version.
+## Web dashboard (`web/`, Next.js 16 on Vercel)
+Next.js + Tailwind + shadcn, Magic UI (number tickers, animated beams, border beams, magic cards, shimmer button) and GSAP (page entrances, funnel bars, sidebar and tab indicators). It reads Neon directly with `@neondatabase/serverless`; every mutation is a server action.
 
-Every human action is written to `decisions` with `decided_by = 'human'`. The **Company drill-down** tab shows every gate with its quote, URL and date, the agent loop's steps, the pages fetched, the raw evidence, the Hunter response, and the generated and sent emails side by side.
+| Page | What you do there |
+|---|---|
+| Overview | Run KPIs, funnel, spec §9 metrics, drop/flag reasons, tokens per stage, recent signals |
+| Review queue (human gate 1) | Qualify, approve the hook, drop with a reason, or provide a domain |
+| Drafts & sends (human gate 2) | Edit with a live word count, edit rate and grounding check; switch hook; rate 👍/👎 with tags; **Approve & send**; record prospect outcomes |
+| Companies | Search and filter; drill-down shows every gate with quote, URL and date, the agent loop, pages, contact, generated vs sent email, signals and learnings applied |
+| Feedback loop | Six-stage diagram with live counts, edit rate with vs without learnings, the learnings store (retire / re-activate), signal feed |
+
+Vercel can't crawl sites or run the Python pipeline, so actions that need research are **queued** (`companies.queued_action`) and picked up by `python main.py sync` (and at the start of every `run`). Approve & send, ratings, outcomes and overrides take effect immediately.
+
+Vercel env vars: `DATABASE_URL`, `RESEND_API_KEY`, `RESEND_FROM`, `MY_EMAIL`, and optionally `RESEND_WEBHOOK_SECRET`. To capture delivery and bounce signals, add a Resend webhook pointing at `https://<app>/api/webhooks/resend`; unsigned requests are rejected.
+
+## Feedback loop ([`pipeline/feedback.py`](pipeline/feedback.py))
+The model has six stages: **Act → Signal → Capture → Store → Retrieve → Apply**. The first version only had Act (drafts and sends) and Signal (a reviewer reacting). The other four are now built:
+
+| Stage | Implementation |
+|---|---|
+| Capture | `feedback_events`: draft sent (with original and sent body + edit rate), rating with tags and note, hook switch, qualify/drop override, domain provided, prospect outcome, Resend delivery. Each row stores context (PoC role, industry, stage, hook type) |
+| Store | `learn()` writes to `learnings`. Phrases reviewers cut or add in 2 or more sends (deterministic); hook-type reply rates (Laplace-smoothed, changes ordering only after 3 outcomes); industry rank deltas from overrides and outcomes (bounded ±0.15, at least 2 signals); and one Gemini pass that turns edits and rating notes into style lessons, kept only if they cite real event IDs |
+| Retrieve | `retrieve(scope, context)` returns active learnings matching the prospect's role, industry and stage |
+| Apply | Writer prompt gets the matching lessons; the validator rejects learned avoid-phrases; hook candidates are re-ordered by learned scores; Stage 1 rank adds the learned industry delta. Uses are logged in `learning_applications` and `emails.learnings_applied` |
+
+The dashboard compares the average edit rate and reply count of sent emails with and without learnings, so you can see whether the loop is working. Learnings can be retired; they are kept for audit but no longer retrieved.
 
 ## Measurement
 For each run, the Run summary tab shows:
@@ -161,12 +190,16 @@ For each run, the Run summary tab shows:
 Migrations are plain SQL in `migrations/`, applied by `main.py migrate`.
 
 ## Changes from the original spec
+- **Feedback loop and web dashboard** added after the first version (see above). The Streamlit dashboard is kept as a local fallback.
+- **Domain resolution** also follows the funding article's link to the company site (best effort; it stops if Google rate-limits) before the TLD guesses.
+- **Job boards** are probed directly (Greenhouse, Lever, Ashby named after the domain) when the site doesn't link one.
+- **PoC fallbacks:** Series A/B rules end with Head of Compliance (incl. Compliance Manager), then CEO.
 - **Resend instead of Gmail.** Drafts live in Neon and are edited in the dashboard rather than in Gmail drafts. The edit rate still compares the generated body with the sent one.
 - **Every qualified company gets a draft**, using the funding round as a default dated hook when there's no fresh audit signal. "Needs review" companies are marked, and you can switch the hook before approving.
 - **Gemini model:** `gemini-3.8-flash`, not 2.5.
 
 ## Known limitations
-- Domain resolution only tries `name + TLD`, so sites like `y.uno` (Yuno) need "Provide domain".
+- Domain resolution relies on the funding article (when Google doesn't rate-limit) and `name + TLD` guesses; the rest need "Provide domain".
 - Company websites rarely date their signals. Most dated signals come from job boards, so many qualified companies need the human hook review.
 - Funding evidence links point to Google News redirect URLs, not the publisher's page.
 - The agent loop's last spare fetch often goes on headcount, which sites rarely state.

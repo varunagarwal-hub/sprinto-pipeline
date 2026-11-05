@@ -40,7 +40,8 @@ DESCRIPTOR_WORDS = {
     "maker", "player", "brand", "aggregator", "marketplace", "app", "solution", "solutions", "developer",
     "operator", "lender", "neobank", "insurer", "outfit", "specialist", "venture", "tech", "saas", "b2b",
     "fintech", "insurtech", "healthtech", "edtech", "proptech", "legaltech", "regtech", "agritech",
-    "deeptech", "hrtech", "martech", "cleantech", "climatetech", "lendtech", "ai", "software",
+    "deeptech", "hrtech", "martech", "cleantech", "climatetech", "lendtech", "wealthtech", "paytech",
+    "ai", "software",
     "spinout", "spin-out", "spinoff", "spin-off", "biz", "arm", "unit", "subsidiary",
 }
 # A name may legitimately end in these ("Drivetrain AI"); any other descriptor as the last token

@@ -38,6 +38,7 @@ TODAY = date(2026, 11, 4)
     ("Barq hits unicorn status with $329.5m Series A", "Barq"),
     ("Payments infrastructure start-up Fun exits stealth with $72m Series A", "Fun"),
     ("Egyptian Fintech Lucky Hits Profitability, Raises $23m Series B", "Lucky"),
+    ("US wealthtech Bunch raises $10M Series B", "Bunch"),
 ])
 def test_parse_company_name(headline, expected):
     assert parse_company_name(headline) == expected

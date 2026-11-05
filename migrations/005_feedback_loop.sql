@@ -2,7 +2,7 @@
 -- this adds Capture (feedback_events), Store (learnings), Retrieve/Apply traceability (learning_applications).
 
 ALTER TABLE companies ADD COLUMN article_url text;        -- publisher URL decoded from the Google News link
-ALTER TABLE companies ADD COLUMN queued_action text;      -- 'research' | 'regenerate' (set by the web dashboard)
+ALTER TABLE companies ADD COLUMN queued_action text;      -- 'research' | 'regenerate' | 'poc_write' (set by the web dashboard)
 ALTER TABLE emails ADD COLUMN learnings_applied bigint[] NOT NULL DEFAULT '{}';
 ALTER TABLE emails ADD COLUMN outcome text CHECK (outcome IN ('replied', 'meeting', 'not_interested', 'no_reply', 'bounced'));
 ALTER TABLE emails ADD COLUMN outcome_at timestamptz;

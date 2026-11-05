@@ -147,6 +147,9 @@ def _flag(cid: int, reason: str) -> str:
     with db.connect() as conn:
         conn.execute("""UPDATE companies SET status='flagged', needs_review=true, flag_reason=%s, updated_at=now()
                         WHERE id=%s""", (reason, cid))
+        # A pending draft written for an earlier (e.g. mock) contact must not survive a failed PoC.
+        conn.execute("UPDATE emails SET status='discarded' WHERE company_id=%s AND status IN ('drafted','flagged')",
+                     (cid,))
     log.info("  -> PoC FLAGGED: %s", reason)
     return "flagged"
 

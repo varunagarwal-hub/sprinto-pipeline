@@ -152,7 +152,8 @@ def _counts(run_id: int) -> dict[str, int]:
 
 def process_queue() -> list[dict]:
     """Work queued from the web dashboard (which can't crawl or call Gemini on Vercel):
-    'research' after a reviewer supplied a domain, 'regenerate' after a hook switch."""
+    'research' after a reviewer supplied a domain, 'regenerate' after a hook switch,
+    'poc_write' after a reviewer qualified a flagged company."""
     with db.connect() as conn:
         rows = conn.execute("SELECT * FROM companies WHERE queued_action IS NOT NULL ORDER BY updated_at").fetchall()
         run_id = conn.execute("SELECT max(id) m FROM runs").fetchone()["m"]
@@ -166,6 +167,11 @@ def process_queue() -> list[dict]:
             elif action == "regenerate":
                 res = write_drafts(company_id=c["id"])
                 status = res[0]["status"] if res else "no contact"
+            elif action == "poc_write":          # reviewer qualified a flagged company on the web
+                status = find_poc({**c, "status": "qualified"}, c["last_run_id"] or run_id)
+                if status == "qualified":
+                    res = write_drafts(company_id=c["id"])
+                    status = res[0]["status"] if res else "no contact"
             else:
                 status = f"unknown action {action}"
         except Exception as e:  # noqa: BLE001
