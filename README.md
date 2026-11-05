@@ -1,5 +1,7 @@
 # Sprinto cold outreach pipeline
 
+**Live dashboard:** https://sprinto-outreach-delta.vercel.app
+
 This pipeline finds recently funded SaaS companies, works out which ones need Sprinto, picks the right person to contact, and drafts a personalised cold email. A human approves each email before it is sent. Every decision (why this company, why this person, why this email) can be traced to evidence stored in Neon: a verbatim quote, its source URL and a date.
 
 ```
