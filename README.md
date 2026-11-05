@@ -154,6 +154,8 @@ Next.js + Tailwind + shadcn, Magic UI (number tickers, animated beams, border be
 
 Vercel can't crawl sites or run the Python pipeline, so actions that need research are **queued** (`companies.queued_action`) and picked up by `python main.py sync` (and at the start of every `run`). Approve & send, ratings, outcomes and overrides take effect immediately.
 
+Deploys: the Vercel project `sprinto-outreach` is connected to this repo with Root Directory `web`, so every push to `main` redeploys production and other branches get preview URLs.
+
 Vercel env vars: `DATABASE_URL`, `RESEND_API_KEY`, `RESEND_FROM`, `MY_EMAIL`, and optionally `RESEND_WEBHOOK_SECRET`. To capture delivery and bounce signals, add a Resend webhook pointing at `https://<app>/api/webhooks/resend`; unsigned requests are rejected.
 
 ## Feedback loop ([`pipeline/feedback.py`](pipeline/feedback.py))
